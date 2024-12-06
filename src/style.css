@@ -1,23 +1,21 @@
 html, body {
+  background-color: #2b2b2b;
   height: 100%;
+  min-height: 100%;
   margin: 0;
-  padding: 0;
   overflow: hidden;
-  background-color: #ff0000;
-  box-sizing: border-box;
 }
 
 #terminal-container {
-  width: 100%; /* Ensure it takes the full width */
-  height: 100%; /* Ensure it takes the full height */
-  display: flex; /* Flexbox to manage layout */
-  justify-content: center; /* Center the content horizontally */
-  align-items: center; /* Center the content vertically */
-}
-
-#terminal {
-  width: 100%; /* Make terminal stretch to container's width */
-  height: 100%; /* Make terminal stretch to container's height */
+  width: auto;
+  height: 100%;
+  margin: 0 auto;
+  padding: 0;
+  #terminal {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
 }
 
 @font-face {
