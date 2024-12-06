@@ -1,0 +1,26 @@
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #ff0000;
+  box-sizing: border-box;
+}
+
+#terminal-container {
+  width: 100%; /* Ensure it takes the full width */
+  height: 100%; /* Ensure it takes the full height */
+  display: flex; /* Flexbox to manage layout */
+  justify-content: center; /* Center the content horizontally */
+  align-items: center; /* Center the content vertically */
+}
+
+#terminal {
+  width: 100%; /* Make terminal stretch to container's width */
+  height: 100%; /* Make terminal stretch to container's height */
+}
+
+@font-face {
+  font-family: DaddyTimeMono;
+  src: url('/src/daddy.woff2') format('woff2');
+}
