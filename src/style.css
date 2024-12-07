@@ -11,11 +11,12 @@ html, body {
   height: 100%;
   margin: 0 auto;
   padding: 0;
-  #terminal {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-  }
+}
+
+#terminal-container #terminal {
+  margin: 0;
+  padding: 0;
+  height: 100%;
 }
 
 @font-face {
