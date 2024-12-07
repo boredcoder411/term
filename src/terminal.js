@@ -24,7 +24,7 @@ export const handleTerminalConnection = (ws) => {
     let ptyProcess = sharedTerminalMode ? sharedPtyProcess : spawnShell();
 
     ws.on('message', command => {
-        const processedCommand = commandProcessor(command);
+        const processedCommand = commandProcessor(command, ptyProcess);
         ptyProcess.write(processedCommand);
     });
 
@@ -41,16 +41,17 @@ export const handleTerminalConnection = (ws) => {
 };
 
 // Utility function to process commands
-const commandProcessor = (command) => {
+const commandProcessor = (command, proc) => {
   console.log('commandProcessor', command.toString());
   command = JSON.parse(command.toString());
   if (command.event === 'command') {
     return command.content;
   } else if (command.event === 'resize') {
-    if (!sharedPtyProcess) {
+    if (!proc) {
       console.warn('Resize event received, but sharedPtyProcess is not initialized.');
     } else {
-      sharedPtyProcess.resize(command.content.cols, command.content.rows);
+      proc.resize(command.content.cols, command.content.rows);
+      console.log('Resized successfully.');
     }
   }
   return '';
