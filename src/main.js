@@ -28,7 +28,6 @@ const theme = {
 };
 
 const terminal = new Terminal({
-  fontSize: 14,
   fontFamily: 'DaddyTimeMono',
   theme: theme,
 });
