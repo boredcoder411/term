@@ -1,82 +1,129 @@
-use actix_web::{rt, web, App, Error, HttpRequest, HttpResponse, HttpServer};
-use actix_ws::AggregatedMessage;
-use futures_util::StreamExt as _;
-use serde::{Deserialize, Serialize};
+use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
+use futures_util::stream::StreamExt;
+use futures_util::sink::SinkExt;
+use std::io::{Read, Write};
+use tokio::net::TcpListener;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::accept_async;
+use serde::Deserialize;
 
 // {"event": "command", "content": "hello"}
 // or
 // {"event": "resize", "content": {"rows": 24, "cols": 80}}
 
-#[derive(Serialize, Deserialize)]
-struct Message {
-    event: String,
-    content: serde_json::Value,
+#[derive(Deserialize, Debug)]
+#[serde(tag = "event", content = "content", rename_all = "lowercase")]
+enum ClientMessage {
+    Command(String),
+    Resize { rows: u16, cols: u16 },
 }
 
-fn handle_message(message: &str) -> String {
-    let message: Message = serde_json::from_str(message).unwrap();
-    match message.event.as_str() {
-        "command" => {
-            let content = message.content.as_str().unwrap();
-            println!("command: {}", content);
-            format!("command: {}", content)
-        }
-        "resize" => {
-            let content = message.content.as_object().unwrap();
-            let rows = content.get("rows").unwrap().as_u64().unwrap();
-            let cols = content.get("cols").unwrap().as_u64().unwrap();
-            println!("resize: rows: {}, cols: {}", rows, cols);
-            format!("resize: rows: {}, cols: {}", rows, cols)
-        }
-        _ => {
-            println!("unknown event: {}", message.event);
-            format!("unknown event: {}", message.event)
-        }
+#[tokio::main]
+async fn main() {
+    let listener = TcpListener::bind("127.0.0.1:8080").await.expect("Failed to bind");
+    println!("WebSocket server running on ws://127.0.0.1:8080");
+
+    while let Ok((stream, _)) = listener.accept().await {
+        tokio::spawn(handle_connection(stream));
     }
 }
 
-async fn new_client(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
-    let (res, mut session, stream) = actix_ws::handle(&req, stream)?;
+async fn handle_connection(stream: tokio::net::TcpStream) {
+    let websocket = accept_async(stream).await.expect("Failed to accept connection");
+    let (ws_sender, mut ws_receiver) = websocket.split();
 
-    let mut stream = stream
-        .aggregate_continuations()
-        // aggregate continuation frames up to 1MiB
-        .max_continuation_size(2_usize.pow(20));
+    let pty_system = NativePtySystem::default();
+    let pair = pty_system
+        .openpty(PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .unwrap();
 
-    // start task but don't wait for it
-    rt::spawn(async move {
-        // receive messages from websocket
-        while let Some(msg) = stream.next().await {
-            match msg {
-                Ok(AggregatedMessage::Text(text)) => {
-                    // process text message
-                    let response = handle_message(&text);
-                    session.text(response).await.unwrap();
+    let cmd = CommandBuilder::new("bash");
+    let mut child = pair.slave.spawn_command(cmd).unwrap();
+    drop(pair.slave);
+
+    let mut reader = pair.master.try_clone_reader().unwrap();
+    let master_writer = pair.master.take_writer().unwrap();
+
+    // PTY -> WebSocket
+    let mut ws_sender_clone = ws_sender;
+    tokio::spawn(async move {
+        let mut buffer = [0u8; 1024];
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) => break, // EOF
+                Ok(n) => {
+                    let output = String::from_utf8_lossy(&buffer[..n]).to_string();
+                    println!("Output: {}", output);
+                    match ws_sender_clone.send(Message::Text(output)).await {
+                        Ok(_) => println!("Sent output to WebSocket"),
+                        Err(e) => eprintln!("Failed to send to WebSocket: {}", e),
+                    }
                 }
-
-                Ok(AggregatedMessage::Binary(bin)) => {
-                    // echo binary messages
-                    session.binary(bin).await.unwrap();
+                Err(e) => {
+                    eprintln!("Error reading from PTY: {}", e);
+                    break;
                 }
-
-                Ok(AggregatedMessage::Ping(msg)) => {
-                    // respond to PING frame with PONG frame
-                    session.pong(&msg).await.unwrap();
-                }
-
-                _ => {}
             }
         }
     });
 
-    // respond immediately with response connected to WS session
-    Ok(res)
+    // WebSocket -> PTY
+    let (tx, rx) = unbounded_channel::<ClientMessage>();
+    tokio::spawn(async move {
+        while let Some(Ok(Message::Text(msg))) = ws_receiver.next().await {
+            match serde_json::from_str::<ClientMessage>(&msg) {
+                Ok(parsed_msg) => {
+                    if tx.send(parsed_msg).is_err() {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to deserialize message: {}", e);
+                }
+            }
+        }
+    });
+
+    // Handle PTY input from WebSocket
+    tokio::spawn(async move {
+        handle_input_stream(rx, master_writer, pair.master).await;
+    });
+
+    child.wait().unwrap();
+    println!("Bash exited");
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| App::new().route("/", web::get().to(new_client)))
-        .bind(("127.0.0.1", 8080))?
-        .run()
-        .await
+async fn handle_input_stream(
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<ClientMessage>,
+    mut writer: Box<dyn Write + Send>,
+    master: Box<(dyn portable_pty::MasterPty + std::marker::Send + 'static)>,
+) {
+    while let Some(input) = rx.recv().await {
+        match input {
+            ClientMessage::Command(cmd) => {
+                if writer.write_all(cmd.as_bytes()).is_err() {
+                    eprintln!("Error writing to PTY");
+                    break;
+                }
+            }
+            ClientMessage::Resize { rows, cols } => {
+                if master.resize(PtySize {
+                    rows,
+                    cols,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })
+                .is_err()
+                {
+                    eprintln!("Error resizing PTY");
+                }
+            }
+        }
+    }
 }
