@@ -1,0 +1,25 @@
+html, body {
+  background-color: #2b2b2b;
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+#terminal-container {
+  width: auto;
+  height: 100%;
+  margin: 0 auto;
+  padding: 0;
+}
+
+#terminal-container #terminal {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+@font-face {
+  font-family: DaddyTimeMono;
+  src: url('/src/daddy.woff2') format('woff2');
+}
