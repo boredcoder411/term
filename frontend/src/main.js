@@ -1,10 +1,10 @@
 import './style.css';
+import fontPath from '/src/daddy.woff2';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
-import './style.css';
 
 const theme = {
   foreground: '#d2d2d2',
@@ -28,7 +28,7 @@ const theme = {
   brightWhite: '#f1f1f0',
 };
 
-const font = new FontFace('DaddyTimeMono', 'url(/src/daddy.woff2)');
+const font = new FontFace('DaddyTimeMono', `url(${fontPath})`);
 
 font.load().then((loadedFont) => {
   document.fonts.add(loadedFont);
