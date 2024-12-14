@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+  "os"
 	"os/exec"
 	"strings"
 
@@ -114,8 +115,9 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	username := "admin" // Replace with your desired username
-	password := "password" // Replace with your desired password
+  creds := strings.Split(os.Args[1], ":")
+  username := creds[0]
+  password := creds[1]
 
 	fs := http.FileServer(http.Dir("dist"))
 	http.Handle("/", BasicAuth(func(w http.ResponseWriter, r *http.Request) {
