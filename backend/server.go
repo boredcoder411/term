@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-  "os"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -126,8 +126,8 @@ func main() {
 
 	http.HandleFunc("/connect", HandleWebSocket)
 
-	fmt.Println("Starting WebSocket server on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	fmt.Println("Starting WebSocket server on :443")
+	if err := http.ListenAndServeTLS(":443", "server.crt", "server.key", nil); err != nil {
 		fmt.Println("Error starting server:", err)
 	}
 }
